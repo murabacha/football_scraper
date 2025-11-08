@@ -54,13 +54,24 @@ DOWNLOAD_DELAY = 1
 # See https://docs.scrapy.org/en/latest/topics/extensions.html
 #EXTENSIONS = {
 #    "scrapy.extensions.telnet.TelnetConsole": None,
-#}
+#} 
 
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
-#ITEM_PIPELINES = {
-#    "football_scraper.pipelines.FootballScraperPipeline": 300,
-#}
+ITEM_PIPELINES = {
+   "football_scraper.pipelines.FootballScraperPipeline": 300,
+    "football_scraper.pipelines.CleanEventMinutesPipeline": 400,
+    "football_scraper.pipelines.SaveMatchesToDatabase": 800,
+}
+FEEDS = {
+    "results.json": {
+        "format": "json",
+        "encoding": "utf8",
+        "store_empty": False,
+        "fields": None,
+        "indent": 4,
+    }
+}
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
