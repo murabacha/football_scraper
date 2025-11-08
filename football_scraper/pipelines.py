@@ -59,7 +59,8 @@ import json
 class SaveMatchesToDatabase:
     def __init__(self):
         
-        self.engine = create_engine('mysql+pymysql://root:robert@localhost/football')
+        self.connect_args = {'ssl':{'mode':'REQUIRED'}}
+        self.engine = create_engine('mysql+pymysql://avnadmin:AVNS_TTsiC2_1m5LG1Uh7112@robert-football-database2025-robertthuo2004-f295.i.aivencloud.com:26666/defaultdb',connect_args = self.connect_args)
         self.metadata = MetaData()
         self.matches = Table('matches', self.metadata,
             Column('id', Integer, primary_key=True),
