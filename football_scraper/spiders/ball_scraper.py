@@ -7,12 +7,13 @@ from football_scraper.items import FootballScraperItem
 class BallScraperSpider(scrapy.Spider):
     name = "ball_scraper"
     allowed_domains = ["onefootball.com"]
-    today = datetime.date.today()
-    yesterday = today - datetime.timedelta(days=1)
-    yesterday_string = yesterday.strftime("%Y-%m-%d")
+    #today = datetime.date.today()
+    #yesterday = today - datetime.timedelta(days=1)
+    yesterday_string = '2024-02-18'#yesterday.strftime("%Y-%m-%d")
     start_urls = [f"https://onefootball.com/en/matches?date={yesterday_string}"]
     current_date_string = yesterday_string
-    current_date = datetime.datetime.strptime("2025-11-02", "%Y-%m-%d").date()
+    # Initialize current_date from the configured start string so decrementing works correctly
+    current_date = datetime.datetime.strptime(yesterday_string, "%Y-%m-%d").date()
     def parse(self, response):
         json_data = response.css('script#__NEXT_DATA__::text').get()
         data = json.loads(json_data)
