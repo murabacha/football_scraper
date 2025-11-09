@@ -58,6 +58,19 @@ CREATE TABLE match_stats (
   FOREIGN KEY (match_id) REFERENCES matches(id)
 );
 
+-- `match_lineups`
+-- New table: stores lineup information per match/team. The spider collects lineup per team
+-- as lists of players with jersey numbers and a formation string. A JSON column is
+-- convenient to store the list of players and any nested structure.
+CREATE TABLE match_lineups (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  match_id INT,
+  team VARCHAR(100),
+  formation VARCHAR(100), -- e.g. '4-3-3' or 'N/A'
+  lineup JSON, -- JSON array of player objects: [{"player_name": "X", "jersey_number": 9}, ...]
+  FOREIGN KEY (match_id) REFERENCES matches(id)
+);
+
 Notes about current implementation
 ----------------------------------
 - `match_url`: the pipeline takes `match_url` from the item and transforms it with `url.split('/')[-1]`. That means only the final path segment (a match id string) is stored. If you want the full URL, store `response.url` directly and avoid splitting.
@@ -166,24 +179,3 @@ Operational notes and best practices
 - Character sets and encoding: if match/team/player names contain non-ASCII characters, ensure the DB and client use UTF-8 (utf8mb4) character set.
 
 - Backups and migrations: when changing types (e.g., `kickoff` -> DATETIME), export current data and run conversion scripts to safely populate the new column before dropping the old one.
-
-Debugging tips
---------------
-- If fields are unexpectedly NULL in DB, log the item before insertion to inspect what the spider produced.
-- Add debug logs in the pipeline showing the `match_url` and `kickoff` value used for insert.
-- If your queries are slow, check missing indexes (use `EXPLAIN` for slow queries).
-
-Next steps I can help with
--------------------------
-- Implement the migration to change `kickoff` from `VARCHAR` to `DATETIME` and update the spider/pipeline to produce normalized datetimes.
-- Add indices and unique constraints via SQLAlchemy in the pipeline and apply them safely.
-- Improve idempotency by storing the full `match_url` or a consistent external match id and adding a unique constraint.
-
-If you'd like, I can also update the pipeline code to:
-- parse kickoff into a Python datetime (using dateutil or custom parsing),
-- insert the parsed value into a `DATETIME` column,
-- add an index on `match_url`, and
-- demonstrate a migration snippet that safely upgrades existing data.
-
----
-File created: `DATABASE.md` in the project folder.
