@@ -60,7 +60,7 @@ class SaveMatchesToDatabase:
     def __init__(self):
         
         self.connect_args = {'ssl':{'mode':'REQUIRED'}}
-        self.engine = create_engine('mysql+pymysql://(your logins of the database here )',connect_args = self.connect_args)
+        self.engine = create_engine('mysql+pymysql://avnadmin:AVNS_TTsiC2_1m5LG1Uh7112@robert-football-database2025-robertthuo2004-f295.i.aivencloud.com:26666/defaultdb',connect_args = self.connect_args)
         self.metadata = MetaData()
         self.matches = Table('matches', self.metadata,
             Column('id', Integer, primary_key=True),
@@ -120,8 +120,11 @@ class SaveMatchesToDatabase:
                 spider.logger.error(f"Database query failed: {e}")
                 existing_result = None
         if existing_result:
+            print('+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
             spider.logger.info(f"Match already exists in database: {adapter.get('hometeam')} vs {adapter.get('awayteam')}")
+            print('+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
             return item
+             
         
         ins = self.matches.insert().values(
             league=adapter.get('league'),

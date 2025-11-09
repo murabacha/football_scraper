@@ -7,9 +7,9 @@ from football_scraper.items import FootballScraperItem
 class BallScraperSpider(scrapy.Spider):
     name = "ball_scraper"
     allowed_domains = ["onefootball.com"]
-    #today = datetime.date.today()
-    #yesterday = today - datetime.timedelta(days=1)
-    yesterday_string = '2024-02-18'#yesterday.strftime("%Y-%m-%d")
+    today = datetime.date.today()
+    yesterday = today - datetime.timedelta(days=1)
+    yesterday_string = yesterday.strftime("%Y-%m-%d")
     start_urls = [f"https://onefootball.com/en/matches?date={yesterday_string}"]
     current_date_string = yesterday_string
     # Initialize current_date from the configured start string so decrementing works correctly
@@ -19,6 +19,7 @@ class BallScraperSpider(scrapy.Spider):
         data = json.loads(json_data)
         containers = data['props']['pageProps']['containers']
         links = []
+        
         for container in containers:
             
             try:
@@ -30,21 +31,31 @@ class BallScraperSpider(scrapy.Spider):
             except Exception as e:
                 self.logger.warning(f"Could not find link in container: {e}")
                 continue
+        print('******************************************************************************************************************************')
+        print(len(links))
+        print(links)
+        print('******************************************************************************************************************************')
+        # Schedule per-match requests with higher priority so they are
+        # processed before the next-date listing request. This reduces the
+        # chance Scrapy will fetch the next date while some match pages
+        # are still pending.
         for link in links:
             match_url = link
             if match_url:
                 url = f"https://onefootball.com{match_url}"
-                yield response.follow(url, callback=self.parse_stats)
+                yield response.follow(url, callback=self.parse_stats, priority=10)
             else:
-                yield self.ball_item
-        
-       # Handle date change after processing all matches
+                # skip missing links
+                continue
+
+        # Handle date change after scheduling match pages. Use a low priority
+        # for the next-date request so it is processed after match pages.
         next_date = self.current_date - datetime.timedelta(days=1)
         next_date_str = next_date.strftime("%Y-%m-%d")
         self.current_date_string = next_date_str
         next_url = f"https://onefootball.com/en/matches?date={next_date_str}"
         self.current_date = next_date
-        yield response.follow(next_url, callback=self.parse)
+        yield scrapy.Request(next_url, callback=self.parse, priority=-10)
 
     def parse_stats(self, response):
         # Create a new item instance for each match

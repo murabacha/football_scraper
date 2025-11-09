@@ -2,7 +2,7 @@ from sqlalchemy import MetaData,Column,Table,String,Integer,create_engine
 import pymysql
 import json
 connect_args = {'ssl':{'mode':'REQUIRED'}}
-engine = create_engine('',connect_args = connect_args)
+engine = create_engine('mysql+pymysql://avnadmin:AVNS_TTsiC2_1m5LG1Uh7112@robert-football-database2025-robertthuo2004-f295.i.aivencloud.com:26666/defaultdb',connect_args = connect_args)
 metadata = MetaData()
 matches = Table('matches', metadata,
             Column('id', Integer, primary_key=True),
@@ -16,8 +16,22 @@ matches = Table('matches', metadata,
             Column('match_completion', String(500)),
         )
 
-query = matches.select().where(matches.c.id == 1)
+query = matches.select().where(matches.c.kickoff == '2025-11-08')
 with engine.connect() as connection:
     result = connection.execute(query)
-    for row in result:
-        print(row)
+    test_result = []
+    for row in result.fetchall():
+        match = {
+            'id': row[0],
+            'league': row[1],
+            'hometeam': row[2],
+            'awayteam': row[3],
+            'hometeam_goals': row[4],
+            'awayteam_goals': row[5],
+            'kickoff': row[6],
+            'match_url': row[7],
+            'match_completion': row[8],
+        }
+        test_result.append(match)
+    json_data = json.dumps(test_result,indent=4)
+    print(json_data)
