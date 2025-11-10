@@ -1,6 +1,7 @@
 import scrapy
 import datetime
 import json
+import json
 from football_scraper.items import FootballScraperItem
 
 
@@ -41,10 +42,42 @@ class BallScraperSpider(scrapy.Spider):
         # are still pending.
         for link in links:
             match_url = link
+        json_data = response.css('script#__NEXT_DATA__::text').get()
+        data = json.loads(json_data)
+        containers = data['props']['pageProps']['containers']
+        links = []
+        
+        for container in containers:
+            
+            try:
+                match_cards  = container['type']['fullWidth']['component']['contentType']['matchCardsList']['matchCards']
+                for match in match_cards:
+                    link = match.get('link')
+                    links.append(link)
+               
+            except Exception as e:
+                self.logger.warning(f"Could not find link in container: {e}")
+                continue
+        print('******************************************************************************************************************************')
+        print(len(links))
+        print(links)
+        print('******************************************************************************************************************************')
+        # Schedule per-match requests with higher priority so they are
+        # processed before the next-date listing request. This reduces the
+        # chance Scrapy will fetch the next date while some match pages
+        # are still pending.
+        for link in links:
+            match_url = link
             if match_url:
                 url = f"https://onefootball.com{match_url}"
                 yield response.follow(url, callback=self.parse_stats, priority=10)
+                yield response.follow(url, callback=self.parse_stats, priority=10)
             else:
+                # skip missing links
+                continue
+
+        # Handle date change after scheduling match pages. Use a low priority
+        # for the next-date request so it is processed after match pages.
                 # skip missing links
                 continue
 
@@ -53,8 +86,10 @@ class BallScraperSpider(scrapy.Spider):
         next_date = self.current_date - datetime.timedelta(days=1)
         next_date_str = next_date.strftime("%Y-%m-%d")
         self.current_date_string = next_date_str
+        self.current_date_string = next_date_str
         next_url = f"https://onefootball.com/en/matches?date={next_date_str}"
         self.current_date = next_date
+        yield scrapy.Request(next_url, callback=self.parse, priority=-10)
         yield scrapy.Request(next_url, callback=self.parse, priority=-10)
 
     def parse_stats(self, response):
@@ -170,9 +205,17 @@ class BallScraperSpider(scrapy.Spider):
         teams = response.css('span.MatchScoreTeam_name__zzQrD.MatchScoreTeam_titleStyle__V_kbV::text').getall()
         ball_item['hometeam'] = teams[0].strip() if len(teams) > 0 else None
         ball_item['awayteam'] = teams[1].strip() if len(teams) > 1 else None
+        ball_item['hometeam'] = teams[0].strip() if len(teams) > 0 else None
+        ball_item['awayteam'] = teams[1].strip() if len(teams) > 1 else None
         goals_scored = response.css('p.MatchScore_scores__Hnn5f.title-2-bold-druk span::text').getall()
         ball_item['hometeam_goals'] = goals_scored[0].strip() if len(goals_scored) > 0 else None
         ball_item['awayteam_goals'] = goals_scored[2].strip() if len(goals_scored) > 2 else None
+        
+        
+        match_statistics = response.css('li.MatchStatsEntry_container__bI_WW')
+        for stat in match_statistics:
+            ball_item['hometeam_goals'] = goals_scored[0].strip() if len(goals_scored) > 0 else None
+            ball_item['awayteam_goals'] = goals_scored[2].strip() if len(goals_scored) > 2 else None
         
         
         match_statistics = response.css('li.MatchStatsEntry_container__bI_WW')
@@ -185,10 +228,16 @@ class BallScraperSpider(scrapy.Spider):
                 if stat_name == "Possession":
                     ball_item['possession_Home'] = homevalue
                     ball_item['Possession_Away'] = awayvalue
+                    ball_item['possession_Home'] = homevalue
+                    ball_item['Possession_Away'] = awayvalue
                 elif stat_name == "Total shots":
                     ball_item['Total_shots_Home'] = homevalue
                     ball_item['Total_shots_Away'] = awayvalue
+                    ball_item['Total_shots_Home'] = homevalue
+                    ball_item['Total_shots_Away'] = awayvalue
                 elif stat_name == "Shots on target":
+                    ball_item['Shots_on_target_Home'] = homevalue
+                    ball_item['Shots_on_target_Away'] = awayvalue
                     ball_item['Shots_on_target_Home'] = homevalue
                     ball_item['Shots_on_target_Away'] = awayvalue
                 elif stat_name == "Duels won":

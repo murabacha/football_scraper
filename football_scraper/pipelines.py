@@ -28,6 +28,7 @@ class FootballScraperPipeline:
                     }
                 ]
                 adapter[name] = events
+<<<<<<< HEAD
         stadium = adapter.get('stadium')
         if stadium is None:
             adapter['stadium'] = 'Unknown Stadium'
@@ -94,6 +95,10 @@ class FootballScraperPipeline:
 
 
 
+=======
+        return item
+
+>>>>>>> 1dd2bdd4e290d5367a6ccdf34e31716da74ce939
 class CleanEventMinutesPipeline:
     def process_item(self, item, spider):
         adapter = ItemAdapter(item)
@@ -117,21 +122,30 @@ class CleanEventMinutesPipeline:
         return item
 
 
+<<<<<<< HEAD
 from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, ForeignKey, Date
+=======
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, ForeignKey
+>>>>>>> 1dd2bdd4e290d5367a6ccdf34e31716da74ce939
 import pymysql
 import json
 class SaveMatchesToDatabase:
     def __init__(self):
         
         self.connect_args = {'ssl':{'mode':'REQUIRED'}}
+<<<<<<< HEAD
        # self.engine = create_engine('mysql+pymysql://avnadmin:AVNS_TTsiC2_1m5LG1Uh7112@robert-football-database2025-robertthuo2004-f295.i.aivencloud.com:26666/defaultdb',connect_args = self.connect_args)
         self.engine  = create_engine('mysql+pymysql://root:robert@localhost/football')
+=======
+        self.engine = create_engine('mysql+pymysql://avnadmin:AVNS_TTsiC2_1m5LG1Uh7112@robert-football-database2025-robertthuo2004-f295.i.aivencloud.com:26666/defaultdb',connect_args = self.connect_args)
+>>>>>>> 1dd2bdd4e290d5367a6ccdf34e31716da74ce939
         self.metadata = MetaData()
         self.matches = Table('matches', self.metadata,
             Column('id', Integer, primary_key=True),
             Column('league', String(255), nullable=False,default='Unknown League'),
             Column('hometeam', String(255)),
             Column('awayteam', String(255)),
+<<<<<<< HEAD
             Column('hometeam_logo', String(500)),
             Column('awayteam_logo', String(500)),
             Column('hometeam_goals', Integer),
@@ -140,6 +154,13 @@ class SaveMatchesToDatabase:
             Column('match_url', String(500)),
             Column('match_completion', String(500)),
             Column('stadium',String(500))
+=======
+            Column('hometeam_goals', Integer),
+            Column('awayteam_goals', Integer),
+            Column('kickoff', String(255)),
+            Column('match_url', String(500)),
+            Column('match_completion', String(500)),
+>>>>>>> 1dd2bdd4e290d5367a6ccdf34e31716da74ce939
         )
         self.match_events = Table('match_events', self.metadata,
             Column('id', Integer, primary_key=True),
@@ -198,14 +219,20 @@ class SaveMatchesToDatabase:
             league=adapter.get('league'),
             hometeam=adapter.get('hometeam'),
             awayteam=adapter.get('awayteam'),
+<<<<<<< HEAD
             hometeam_logo=adapter.get('hometeam_logo'),
             awayteam_logo=adapter.get('awayteam_logo'),
+=======
+>>>>>>> 1dd2bdd4e290d5367a6ccdf34e31716da74ce939
             hometeam_goals=adapter.get('hometeam_goals'),
             awayteam_goals=adapter.get('awayteam_goals'),
             kickoff=adapter.get('kickoff'),
             match_url=url_id,
             match_completion=adapter.get('match_completion'),
+<<<<<<< HEAD
             stadium=adapter.get('stadium')
+=======
+>>>>>>> 1dd2bdd4e290d5367a6ccdf34e31716da74ce939
         )
         with self.engine.begin() as conn:
             result = conn.execute(ins)
@@ -249,7 +276,11 @@ class SaveMatchesToDatabase:
             ins_lineup = self.match_lineups.insert().values(
                 match_id=match_id,
                 team=lineup.get('team'),
+<<<<<<< HEAD
                 lineup=json.dumps(lineup.get('lineup')) if lineup.get('lineup') != 'no available lineup' else lineup.get('lineup'),
+=======
+                lineup=json.dumps(lineup.get('lineup')),
+>>>>>>> 1dd2bdd4e290d5367a6ccdf34e31716da74ce939
                 formation=lineup.get('home_formation') or lineup.get('away_formation'),
             )
             with self.engine.begin() as conn:
