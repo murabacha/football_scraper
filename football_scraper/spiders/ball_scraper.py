@@ -9,11 +9,11 @@ class BallScraperSpider(scrapy.Spider):
     allowed_domains = ["onefootball.com"]
     today = datetime.date.today()
     yesterday = today - datetime.timedelta(days=1)
-    yesterday_string = yesterday.strftime("%Y-%m-%d")
-    start_urls = [f"https://onefootball.com/en/matches?date={yesterday_string}"]
-    current_date_string = yesterday_string
+    start_date = yesterday.strftime("%Y-%m-%d")
+    start_urls = [f"https://onefootball.com/en/matches?date={start_date}"]
+    current_date_string = start_date
     # Initialize current_date from the configured start string so decrementing works correctly
-    current_date = datetime.datetime.strptime(yesterday_string, "%Y-%m-%d").date()
+    current_date = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
     def parse(self, response):
         json_data = response.css('script#__NEXT_DATA__::text').get()
         data = json.loads(json_data)
@@ -69,7 +69,11 @@ class BallScraperSpider(scrapy.Spider):
         for match in match_info:
             try:
                 match_events = match['type']['fullWidth']['component']['contentType']['matchEvents']['events']
-                for event in match_events:
+            except Exception as e:
+                continue
+        if match_events:
+            for event in match_events:
+                try:
                     time = event.get('timeline', None)
                     the_event = event.get('type', None)
                     event_name = event.get('name',None)
@@ -80,7 +84,10 @@ class BallScraperSpider(scrapy.Spider):
                         team = 'awayteam'
                     if event_name == 'Goal':
                         scorer = the_event['goal'].get('scorer', None).get('name', None)
-                        assist = the_event['goal'].get('assistant', None).get('name', None)
+                        try:
+                            assist = the_event['goal'].get('assistant', None).get('name', None)
+                        except Exception as e:
+                            assist = None
                         event_info = {
                             "team": team,
                             "minute": time,
@@ -92,6 +99,7 @@ class BallScraperSpider(scrapy.Spider):
                             'assist': assist
 
                         }
+                        
                     elif event_name == 'Yellow card':
                         player = the_event['card'].get('player', None).get('name', None)
                         event_info = {
@@ -146,12 +154,17 @@ class BallScraperSpider(scrapy.Spider):
 
                         }
                     ball_item['events'].append(event_info) #append event_info
-                               
-            except Exception as e:
-                continue
+                except Exception as e:
+                    continue
        
-    
-        
+        home_full_url = response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_home__9Ehdk.MatchScoreTeam_preMatch__BYiz7 span.EntityLogo_entityLogo__29IUu.EntityLogo_entityLogoWithHover__XynBQ.MatchScoreTeam_icon__XiDSl img::attr(srcset)').get()\
+        or  response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_home__9Ehdk span.EntityLogo_entityLogo__29IUu.EntityLogo_entityLogoWithHover__XynBQ.MatchScoreTeam_icon__XiDSl img::attr(srcset)').get() 
+        actual_url = home_full_url.split(' 1x')[0]
+        ball_item['hometeam_logo'] = actual_url
+        away_full_url = response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_away__O_HfB.MatchScoreTeam_preMatch__BYiz7 span.EntityLogo_entityLogo__29IUu.EntityLogo_entityLogoWithHover__XynBQ.MatchScoreTeam_icon__XiDSl img::attr(srcset)').get()\
+        or response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_away__O_HfB span.EntityLogo_entityLogo__29IUu.EntityLogo_entityLogoWithHover__XynBQ.MatchScoreTeam_icon__XiDSl img::attr(srcset)').get()
+        actual_url = away_full_url.split(' 1x')[0]
+        ball_item['awayteam_logo'] = actual_url
         ball_item['match_url'] = response.url
         ball_item['league'] = response.css('span.title-7-medium.MatchScoreCompetition_competitionName__wONrf::text').get()
         teams = response.css('span.MatchScoreTeam_name__zzQrD.MatchScoreTeam_titleStyle__V_kbV::text').getall()
@@ -182,8 +195,8 @@ class BallScraperSpider(scrapy.Spider):
                     ball_item['Duels_won_Home'] = homevalue
                     ball_item['Duels_won_Away'] = awayvalue
         extra_info = response.css('span.title-8-regular.MatchInfoEntry_subtitle__Mb7Jd::text').getall()
-        ball_item['kickoff'] = self.current_date_string
         ball_item["stadium"] = extra_info[2] if len(extra_info) > 2 else None
+        ball_item['kickoff'] = self.current_date + datetime.timedelta(days=1)
 
         second_json_data = response.css('script#__NEXT_DATA__::text').get()
         data = json.loads(second_json_data)
@@ -219,8 +232,8 @@ class BallScraperSpider(scrapy.Spider):
                                 the_home_lineup.append(player_info)
                         ball_item['match_lineup'].append({
                             'team': hometeam,
-                            'lineup': the_home_lineup,
-                            'home_formation': hometeam_formation
+                            'lineup': the_home_lineup if len(the_home_lineup) > 0 else None,
+                            'home_formation': hometeam_formation if len(hometeam_formation) > 0 else None
                         })
                     else:
                         line_up = hometeam_lineup['variant'].get('flat').get('players', [])
@@ -234,12 +247,10 @@ class BallScraperSpider(scrapy.Spider):
                                 'jersey_number': jersey_number
                             }
                             the_home_lineup.append(player_info)
-                        if len(hometeam_formation) == 0:
-                            hometeam_formation = 'N/A'
                         ball_item['match_lineup'].append({
                             'team': hometeam,
-                            'lineup': the_home_lineup,
-                            'home_formation': hometeam_formation
+                            'lineup': the_home_lineup if len(the_home_lineup) > 0 else None,
+                            'home_formation': hometeam_formation if len(hometeam_formation) > 0 else None
                         })
 
                 if awayteam_lineup:
@@ -260,13 +271,13 @@ class BallScraperSpider(scrapy.Spider):
                                 the_away_lineup.append(player_info)
                         ball_item['match_lineup'].append({
                             'team': awayteam,
-                            'lineup': the_away_lineup,
-                            'away_formation': awayteam_formation
+                            'lineup': the_away_lineup if len(the_away_lineup) > 0 else None,
+                            'away_formation': awayteam_formation if len(awayteam_formation) > 0 else None
                         })
                     else:
                         line_up = awayteam_lineup['variant'].get('flat').get('players', [])
-                        hometeam_formation = ''
-                        the_home_lineup = []
+                        awayteam_formation = ''
+                        the_away_lineup = []
                         for player in line_up:
                             player_name = player.get('name')
                             jersey_number = player.get('jerseyNumber')
@@ -275,20 +286,14 @@ class BallScraperSpider(scrapy.Spider):
                                 'jersey_number': jersey_number
                             }
                             the_home_lineup.append(player_info)
-                        if len(hometeam_formation) == 0:
-                            hometeam_formation = 'N/A'
                         ball_item['match_lineup'].append({
-                            'team': hometeam,
-                            'lineup': the_home_lineup,
-                            'home_formation': hometeam_formation
+                            'team': awayteam,
+                            'lineup': the_away_lineup if len(the_away_lineup) > 0 else None,
+                            'away_formation': awayteam_formation if len(awayteam_formation) > 0 else None
                         })
             except Exception as e:
                 self.logger.warning(f"Could not find lineup in match: {e}")
                 continue
-            # print('========================================')
-            # print(hometeam_formation)
-            # print(awayteam_formation)
-            # print('========================================')
         
 
 

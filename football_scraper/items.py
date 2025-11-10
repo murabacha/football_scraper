@@ -9,6 +9,8 @@ import scrapy
 class FootballScraperItem(scrapy.Item):
     league = scrapy.Field()
     hometeam = scrapy.Field()
+    hometeam_logo = scrapy.Field()
+    awayteam_logo = scrapy.Field()
     awayteam = scrapy.Field()
     hometeam_goals = scrapy.Field()
     awayteam_goals = scrapy.Field()

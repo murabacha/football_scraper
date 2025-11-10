@@ -28,7 +28,71 @@ class FootballScraperPipeline:
                     }
                 ]
                 adapter[name] = events
+        stadium = adapter.get('stadium')
+        if stadium is None:
+            adapter['stadium'] = 'Unknown Stadium'
+        
+    
+        lineups = adapter.get('match_lineup')
+        cleaned_lineups = []
+        if len(lineups ) == 0:
+            lineups = [{
+                "team": adapter.get('hometeam'),
+                "lineup": 'no available lineup',
+                "home_formation": 'Unknown Formation',
+            },
+            {
+                "team": adapter.get('awayteam'),
+                "lineup": 'no available lineup',
+                "away_formation": 'Unknown Formation',
+            }]
+            for lineup in lineups:
+                cleaned_lineups.append(lineup)
+            adapter['match_lineup'] = cleaned_lineups
+            return item
+        
+        for lineup in lineups:
+            try:
+                home_formation = lineup['home_formation']
+                players_lineup = lineup.get('lineup')
+                if home_formation is None and players_lineup is None:
+                    lineup['home_formation'] = 'Unknown Formation'
+                    lineup['lineup'] = 'no available lineup'
+                elif home_formation is None and players_lineup is not None:
+                    lineup['home_formation'] = 'Unknown Formation'
+                    lineup['lineup'] = players_lineup
+                elif home_formation is not None and players_lineup is None:
+                    lineup['lineup'] = 'no available lineup'
+                    lineup['home_formation'] = home_formation
+                cleaned_lineups.append(lineup)
+            except Exception as e:
+                continue
+        for lineup in lineups:
+            try:
+                away_formation = lineup['away_formation']
+                players_lineup = lineup.get('lineup')
+                if away_formation is None and players_lineup is None:
+                    lineup['home_formation'] = 'Unknown Formation'
+                    lineup['lineup'] = 'no available lineup'
+                elif away_formation is None and players_lineup is not None:
+                    lineup['home_formation'] = 'Unknown Formation'
+                    lineup['lineup'] = players_lineup
+                elif away_formation is not None and players_lineup is None:
+                    lineup['lineup'] = 'no available lineup'
+                    lineup['home_formation'] = away_formation
+                cleaned_lineups.append(lineup)
+            except Exception as e:
+                continue
+            
+        adapter['match_lineup'] = cleaned_lineups
+        print('^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^')
+        print(adapter.get('match_lineup'))
+        print('^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^')
+
         return item
+
+
+
 
 class CleanEventMinutesPipeline:
     def process_item(self, item, spider):
@@ -53,25 +117,29 @@ class CleanEventMinutesPipeline:
         return item
 
 
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, ForeignKey
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, ForeignKey, Date
 import pymysql
 import json
 class SaveMatchesToDatabase:
     def __init__(self):
         
         self.connect_args = {'ssl':{'mode':'REQUIRED'}}
-        self.engine = create_engine('mysql+pymysql://avnadmin:AVNS_TTsiC2_1m5LG1Uh7112@robert-football-database2025-robertthuo2004-f295.i.aivencloud.com:26666/defaultdb',connect_args = self.connect_args)
+       # self.engine = create_engine('mysql+pymysql://avnadmin:AVNS_TTsiC2_1m5LG1Uh7112@robert-football-database2025-robertthuo2004-f295.i.aivencloud.com:26666/defaultdb',connect_args = self.connect_args)
+        self.engine  = create_engine('mysql+pymysql://root:robert@localhost/football')
         self.metadata = MetaData()
         self.matches = Table('matches', self.metadata,
             Column('id', Integer, primary_key=True),
             Column('league', String(255), nullable=False,default='Unknown League'),
             Column('hometeam', String(255)),
             Column('awayteam', String(255)),
+            Column('hometeam_logo', String(500)),
+            Column('awayteam_logo', String(500)),
             Column('hometeam_goals', Integer),
             Column('awayteam_goals', Integer),
-            Column('kickoff', String(255)),
+            Column('kickoff', Date),
             Column('match_url', String(500)),
             Column('match_completion', String(500)),
+            Column('stadium',String(500))
         )
         self.match_events = Table('match_events', self.metadata,
             Column('id', Integer, primary_key=True),
@@ -130,11 +198,14 @@ class SaveMatchesToDatabase:
             league=adapter.get('league'),
             hometeam=adapter.get('hometeam'),
             awayteam=adapter.get('awayteam'),
+            hometeam_logo=adapter.get('hometeam_logo'),
+            awayteam_logo=adapter.get('awayteam_logo'),
             hometeam_goals=adapter.get('hometeam_goals'),
             awayteam_goals=adapter.get('awayteam_goals'),
             kickoff=adapter.get('kickoff'),
             match_url=url_id,
             match_completion=adapter.get('match_completion'),
+            stadium=adapter.get('stadium')
         )
         with self.engine.begin() as conn:
             result = conn.execute(ins)
@@ -178,7 +249,7 @@ class SaveMatchesToDatabase:
             ins_lineup = self.match_lineups.insert().values(
                 match_id=match_id,
                 team=lineup.get('team'),
-                lineup=json.dumps(lineup.get('lineup')),
+                lineup=json.dumps(lineup.get('lineup')) if lineup.get('lineup') != 'no available lineup' else lineup.get('lineup'),
                 formation=lineup.get('home_formation') or lineup.get('away_formation'),
             )
             with self.engine.begin() as conn:
