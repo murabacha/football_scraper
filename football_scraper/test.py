@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 from sqlalchemy import MetaData,Column,Table,String,Integer,create_engine,ForeignKey
-=======
-from sqlalchemy import MetaData,Column,Table,String,Integer,create_engine
->>>>>>> 1dd2bdd4e290d5367a6ccdf34e31716da74ce939
 import pymysql
 import json
 connect_args = {'ssl':{'mode':'REQUIRED'}}
@@ -19,7 +15,6 @@ matches = Table('matches', metadata,
             Column('match_url', String(500)),
             Column('match_completion', String(500)),
         )
-<<<<<<< HEAD
 match_events = Table('match_events', metadata,
             Column('id', Integer, primary_key=True),
             Column('match_id', Integer, ForeignKey('matches.id')),
@@ -43,15 +38,10 @@ match_lineups = Table('match_lineups', metadata,
         )
 
 query = match_lineups.select().where(match_lineups.c.match_id == 1)
-=======
-
-query = matches.select().where(matches.c.kickoff == '2025-11-08')
->>>>>>> 1dd2bdd4e290d5367a6ccdf34e31716da74ce939
 with engine.connect() as connection:
     result = connection.execute(query)
     test_result = []
     for row in result.fetchall():
-<<<<<<< HEAD
         print(row)
         match = {
             'id': row[0],
@@ -83,19 +73,3 @@ with engine.connect() as connection:
 #         test_result.append(match)
 #     json_data = json.dumps(test_result,indent=4)
 #     print(json_data)
-=======
-        match = {
-            'id': row[0],
-            'league': row[1],
-            'hometeam': row[2],
-            'awayteam': row[3],
-            'hometeam_goals': row[4],
-            'awayteam_goals': row[5],
-            'kickoff': row[6],
-            'match_url': row[7],
-            'match_completion': row[8],
-        }
-        test_result.append(match)
-    json_data = json.dumps(test_result,indent=4)
-    print(json_data)
->>>>>>> 1dd2bdd4e290d5367a6ccdf34e31716da74ce939

@@ -89,6 +89,16 @@ class FootballScraperPipeline:
         print(adapter.get('match_lineup'))
         print('^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^')
 
+        names = ['hometeam_goals', 'awayteam_goals']
+        for name in names:
+            value = adapter.get(name)
+            if value is None:
+                adapter[name] = 0
+            elif value == '-':
+                adapter[name] = 0
+            adapter[name] = int(value) if value is not None and value.isdigit() else 0
+
+
         return item
 
 
@@ -124,7 +134,7 @@ class SaveMatchesToDatabase:
     def __init__(self):
         
         self.connect_args = {'ssl':{'mode':'REQUIRED'}}
-       # self.engine = create_engine('mysql+pymysql://avnadmin:AVNS_TTsiC2_1m5LG1Uh7112@robert-football-database2025-robertthuo2004-f295.i.aivencloud.com:26666/defaultdb',connect_args = self.connect_args)
+        #self.engine = create_engine('mysql+pymysql://avnadmin:AVNS_TTsiC2_1m5LG1Uh7112@robert-football-database2025-robertthuo2004-f295.i.aivencloud.com:26666/football_data',connect_args = self.connect_args)
         self.engine  = create_engine('mysql+pymysql://root:robert@localhost/football')
         self.metadata = MetaData()
         self.matches = Table('matches', self.metadata,
@@ -139,7 +149,8 @@ class SaveMatchesToDatabase:
             Column('kickoff', Date),
             Column('match_url', String(500)),
             Column('match_completion', String(500)),
-            Column('stadium',String(500))
+            Column('stadium',String(500)),
+            #Column('match_time', String(500)),
         )
         self.match_events = Table('match_events', self.metadata,
             Column('id', Integer, primary_key=True),
@@ -158,10 +169,10 @@ class SaveMatchesToDatabase:
             Column('match_id', Integer, ForeignKey('matches.id')),
             Column('possession_home', String(50)),
             Column('possession_away', String(50)),
-            Column('total_shots_home', Integer),
-            Column('total_shots_away', Integer),
-            Column('shots_on_target_home', Integer),
-            Column('shots_on_target_away', Integer),
+            Column('total_shots_home', String(50)),
+            Column('total_shots_away', String(50)),
+            Column('shots_on_target_home', String(50)),
+            Column('shots_on_target_away', String(50)),
             Column('duels_won_home', String(50)),
             Column('duels_won_away', String(50)),
         )
@@ -188,10 +199,94 @@ class SaveMatchesToDatabase:
                 spider.logger.error(f"Database query failed: {e}")
                 existing_result = None
         if existing_result:
-            print('+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
-            spider.logger.info(f"Match already exists in database: {adapter.get('hometeam')} vs {adapter.get('awayteam')}")
-            print('+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
-            return item
+            if existing_result.league == adapter.get('league') and existing_result.hometeam == adapter.get('hometeam') and existing_result.awayteam == adapter.get('awayteam')\
+                  and existing_result.kickoff == adapter.get('kickoff') and existing_result.stadium == adapter.get('stadium') and existing_result.match_completion == adapter.get('match_completion'):
+                spider.logger.info(f"Match already exists: {adapter.get('hometeam')} vs {adapter.get('awayteam')}")
+                return item
+            else:
+                update_match = self.matches.update().where(self.matches.c.id == existing_result.id).values(
+                league=adapter.get('league'),
+                hometeam=adapter.get('hometeam'),
+                awayteam=adapter.get('awayteam'),
+                hometeam_logo=adapter.get('hometeam_logo'),
+                awayteam_logo=adapter.get('awayteam_logo'),
+                hometeam_goals=adapter.get('hometeam_goals'),
+                awayteam_goals=adapter.get('awayteam_goals'),
+                kickoff=adapter.get('kickoff'),
+                match_url=url_id,
+                match_completion=adapter.get('match_completion'),
+                stadium=adapter.get('stadium')
+            )
+            with self.engine.begin() as conn:
+                result = conn.execute(update_match)
+                match_id = result.inserted_primary_key[0]#
+            #get the events and lineups and stats
+            event_list = adapter.get('events')
+            def update_event(event):
+                update_event = self.match_events.insert().values(
+                        team=event.get('team'),
+                        minute=event.get('minute'),
+                        type=event.get('type'),
+                        player_in=event.get('player_in'),
+                        player_out=event.get('player_out'),
+                        scorer=event.get('scorer'),
+                        assist=event.get('assist'),
+                        player=event.get('player'),
+                    )
+                with self.engine.begin() as conn:
+                        result = conn.execute(update_event)
+                        return result
+            for event in event_list:
+                existing_event = self.match_events.select().where(
+                    (self.match_events.c.match_id == match_id)
+                )
+                with self.engine.begin() as conn:
+                    try:
+                        existing_results = conn.execute(existing_event).fetchall()
+                    except Exception as e:
+                        spider.logger.error(f"Database query failed: {e}")
+                        existing_result = None
+                if existing_results:
+                    for existing_result in existing_results:
+                        event_type = existing_results.type
+                        if event_type == 'Goal' or  event_type == 'Penalty' or event_type == 'Penalty Missed':
+                            if event_type == adapter.get('type') and event.get('minute') == existing_result.minute and event.get('team') == existing_result.team and event.get('scorer') == existing_result.scorer:
+                                continue
+                            else:
+                                update_event(event) 
+                        elif event_type == 'Yellow card' or event_type == 'Red card' or event_type == 'Own goal':
+                            if event_type == adapter.get('type') and event.get('minute') == existing_result.minute and event.get('team') == existing_result.team and event.get('player') == existing_result.player:
+                                continue
+                            else:
+                                update_event(event) 
+                        elif event_type == 'Substitution':
+                            if event_type == adapter.get('type') and event.get('minute') == existing_result.minute and event.get('player_in') == existing_result.player_in and event.get('player_out') == existing_result.player_out:
+                                continue
+                            else:
+                                update_event(event) 
+
+                    else:
+                        update_event(event)
+                else:
+                    update_event(event)
+        else:
+                    
+                ins_event = self.match_events.insert().values(
+                    match_id=match_id,
+                    team=event.get('team'),
+                    minute=event.get('minute'),
+                    type=event.get('type'),
+                    player_in=event.get('player_in'),
+                    player_out=event.get('player_out'),
+                    scorer=event.get('scorer'),
+                    assist=event.get('assist'),
+                    player=event.get('player'),
+                )
+                with self.engine.begin() as conn:
+                    result = conn.execute(ins_event)
+
+
+            # return item
              
         
         ins = self.matches.insert().values(

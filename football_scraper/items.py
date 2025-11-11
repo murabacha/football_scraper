@@ -28,3 +28,4 @@ class FootballScraperItem(scrapy.Item):
     match_url = scrapy.Field()
     match_lineup = scrapy.Field()
     match_completion = scrapy.Field()
+    match_time = scrapy.Field()
