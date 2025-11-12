@@ -10,7 +10,7 @@ class BallScraperSpider(scrapy.Spider):
     allowed_domains = ["onefootball.com"]
     # today = datetime.date.today()
     # yesterday = today - datetime.timedelta(days=1)
-    start_date = '2025-11-11'#yesterday.strftime("%Y-%m-%d")
+    start_date = '2025-11-12'#yesterday.strftime("%Y-%m-%d")
     start_urls = [f"https://onefootball.com/en/matches?date={start_date}"]
     current_date_string = start_date
     # Initialize current_date from the configured start string so decrementing works correctly
@@ -98,21 +98,24 @@ class BallScraperSpider(scrapy.Spider):
         the_date_date = datetime.datetime.strptime(the_date, "%Y-%m-%d").date()
         ball_item = FootballScraperItem()
         match_completion =  response.css('div.MatchScore_data__ahxqz span.title-8-medium::text').get() or response.css('div.MatchScore_data__ahxqz span.title-8-medium.MatchScore_highlightedText__hXFt7').get()
-        print('@############@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@###########################################@@@@@@@@@@@@@@###################################@@@@@@@@@@@@@@@@@@@@@@@@@#')
-        print(match_completion)
-        print('@############@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@###########################################@@@@@@@@@@@@@@###################################@@@@@@@@@@@@@@@@@@@@@@@@@#')
         if match_completion is None:
+            match_time = response.css('div.MatchScore_data__ahxqz span.title-6-bold.MatchScore_numeric__ke8YT::text').get()
+            ball_item['match_time'] = match_time
+            game_time = response.css('div.MatchScore_data__ahxqz span.title-8-medium.MatchScore_highlightedText__hXFt7::text').get()
+            ball_item['game_time'] = game_time
             ball_item['league'] = response.css('span.title-7-medium.MatchScoreCompetition_competitionName__wONrf::text').get()
             ball_item['hometeam'] = response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_home__9Ehdk.MatchScoreTeam_preMatch__BYiz7 span.MatchScoreTeam_name__zzQrD::text').get()
             ball_item['awayteam'] = response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_away__O_HfB.MatchScoreTeam_preMatch__BYiz7 span.MatchScoreTeam_name__zzQrD::text').get()
             home_full_url = response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_home__9Ehdk.MatchScoreTeam_preMatch__BYiz7 span.EntityLogo_entityLogo__29IUu.EntityLogo_entityLogoWithHover__XynBQ.MatchScoreTeam_icon__XiDSl img::attr(srcset)').get()\
             or  response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_home__9Ehdk span.EntityLogo_entityLogo__29IUu.EntityLogo_entityLogoWithHover__XynBQ.MatchScoreTeam_icon__XiDSl img::attr(srcset)').get() 
-            actual_url = home_full_url.split(' 1x')[0]
-            ball_item['hometeam_logo'] = actual_url
+            if home_full_url:
+                actual_url = home_full_url.split(' 1x')[0]
+                ball_item['hometeam_logo'] = actual_url
             away_full_url = response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_away__O_HfB.MatchScoreTeam_preMatch__BYiz7 span.EntityLogo_entityLogo__29IUu.EntityLogo_entityLogoWithHover__XynBQ.MatchScoreTeam_icon__XiDSl img::attr(srcset)').get()\
             or response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_away__O_HfB span.EntityLogo_entityLogo__29IUu.EntityLogo_entityLogoWithHover__XynBQ.MatchScoreTeam_icon__XiDSl img::attr(srcset)').get()
-            actual_url = away_full_url.split(' 1x')[0]
-            ball_item['awayteam_logo'] = actual_url
+            if away_full_url:
+                actual_url = away_full_url.split(' 1x')[0]
+                ball_item['awayteam_logo'] = actual_url
             ball_item['match_url'] = response.url
             ball_item['match_completion'] = 'pending'
             ball_item['hometeam_goals'] = '0'
@@ -130,7 +133,10 @@ class BallScraperSpider(scrapy.Spider):
             ball_item['Duels_won_Home'] = None
             ball_item['Duels_won_Away'] = None
         else:
-        
+            match_time = response.css('div.MatchScore_data__ahxqz span.title-6-bold.MatchScore_numeric__ke8YT::text').get()
+            ball_item['match_time'] = match_time
+            game_time = response.css('span.title-8-medium.MatchScore_highlightedText__hXFt7::text').get()
+            ball_item['game_time'] = game_time
         
 
             ball_item['match_completion'] = match_completion    
@@ -245,12 +251,14 @@ class BallScraperSpider(scrapy.Spider):
         
             home_full_url = response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_home__9Ehdk.MatchScoreTeam_preMatch__BYiz7 span.EntityLogo_entityLogo__29IUu.EntityLogo_entityLogoWithHover__XynBQ.MatchScoreTeam_icon__XiDSl img::attr(srcset)').get()\
             or  response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_home__9Ehdk span.EntityLogo_entityLogo__29IUu.EntityLogo_entityLogoWithHover__XynBQ.MatchScoreTeam_icon__XiDSl img::attr(srcset)').get() 
-            actual_url = home_full_url.split(' 1x')[0]
-            ball_item['hometeam_logo'] = actual_url
+            if home_full_url:
+                actual_url = home_full_url.split(' 1x')[0]
+                ball_item['hometeam_logo'] = actual_url
             away_full_url = response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_away__O_HfB.MatchScoreTeam_preMatch__BYiz7 span.EntityLogo_entityLogo__29IUu.EntityLogo_entityLogoWithHover__XynBQ.MatchScoreTeam_icon__XiDSl img::attr(srcset)').get()\
             or response.css('a.MatchScoreTeam_container__1X5t5.MatchScoreTeam_away__O_HfB span.EntityLogo_entityLogo__29IUu.EntityLogo_entityLogoWithHover__XynBQ.MatchScoreTeam_icon__XiDSl img::attr(srcset)').get()
-            actual_url = away_full_url.split(' 1x')[0]
-            ball_item['awayteam_logo'] = actual_url
+            if away_full_url:
+                actual_url = away_full_url.split(' 1x')[0]
+                ball_item['awayteam_logo'] = actual_url
             ball_item['match_url'] = response.url
             ball_item['league'] = response.css('span.title-7-medium.MatchScoreCompetition_competitionName__wONrf::text').get()
             teams = response.css('span.MatchScoreTeam_name__zzQrD.MatchScoreTeam_titleStyle__V_kbV::text').getall()
