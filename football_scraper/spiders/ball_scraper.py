@@ -75,13 +75,13 @@ class BallScraperSpider(scrapy.Spider):
             match_url = link
             if match_url:
                 url = f"https://onefootball.com{match_url}"
-                yield response.follow(url, callback=self.parse_stats, priority=10)
+                yield response.follow(url, callback=self.parse_stats, priority=10,dont_filter=True)
             else:
                 # skip missing links
                 continue
 
         # Handle date change after scheduling match pages and  Using a low priority for the next-date request so it is processed after match pages.
-        next_date = self.current_date + datetime.timedelta(days=1)
+        next_date = datetime.date.today() #self.current_date + datetime.timedelta(days=1)
         next_date_str = next_date.strftime("%Y-%m-%d")
         self.current_date_string = next_date_str
         self.current_date_string = next_date_str

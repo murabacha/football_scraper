@@ -223,6 +223,8 @@ class SaveMatchesToDatabase:
             match_id = existing.id
             # Compare and update if any field differs
             db_data = dict(existing._mapping)
+            if not scraped_data.get('match_time'):
+                scraped_data['match_time'] = db_data.get('match_time')
             changed = any(str(db_data[k]) != str(v) for k, v in scraped_data.items())
             if changed:
                 spider.logger.info(f"Updating match data for {adapter.get('hometeam')} vs {adapter.get('awayteam')}")
@@ -231,16 +233,13 @@ class SaveMatchesToDatabase:
                         self.matches.update().where(self.matches.c.id == match_id).values(**scraped_data)
                     )
 
-        # Sync events and lineups
         self.sync_match_events(match_id, adapter, spider)
         self.sync_match_lineups(match_id, adapter, spider)
 
-        # Stats can just be replaced each time safely
         self.upsert_stats(match_id, adapter, spider)
 
         return item
 
-    # ----------------- EVENTS -----------------
     def sync_match_events(self, match_id, adapter, spider):
         events = adapter.get("events", [])
         if not events:
@@ -266,7 +265,6 @@ class SaveMatchesToDatabase:
                     conn.execute(self.match_events.insert().values(match_id=match_id, **ev))
                     spider.logger.info(f"Inserted new event: {ev.get('type')} ({ev.get('team')}) min {ev.get('minute')}")
 
-    # ----------------- LINEUPS -----------------
     def sync_match_lineups(self, match_id, adapter, spider):
         lineups = adapter.get("match_lineup", [])
         if not lineups:
@@ -295,8 +293,6 @@ class SaveMatchesToDatabase:
                         lineup=lineup_json
                     ))
                     spider.logger.info(f"Inserted new lineup for {team}")
-
-    # ----------------- STATS -----------------
     def upsert_stats(self, match_id, adapter, spider):
         stats_data = {
             "match_id": match_id,
@@ -320,222 +316,4 @@ class SaveMatchesToDatabase:
                 conn.execute(
                     self.match_stats.update().where(self.match_stats.c.match_id == match_id).values(**stats_data)
                 )
-    # def process_item(self, item, spider):
-    
-    #     def update_match():
-    #         update_match = self.matches.update().where(self.matches.c.id == existing_result.id).values(
-    #             league=adapter.get('league'),
-    #             hometeam=adapter.get('hometeam'),
-    #             awayteam=adapter.get('awayteam'),
-    #             hometeam_logo=adapter.get('hometeam_logo'),
-    #             awayteam_logo=adapter.get('awayteam_logo'),
-    #             hometeam_goals=adapter.get('hometeam_goals'),
-    #             awayteam_goals=adapter.get('awayteam_goals'),
-    #             kickoff=adapter.get('kickoff'),
-    #             match_url=url_id,
-    #             match_completion=adapter.get('match_completion'),
-    #             stadium=adapter.get('stadium')
-    #         )
-    #         with self.engine.begin() as conn:
-    #             result = conn.execute(update_match)
-    #             match_id = existing_result.id
-    #         #get the events and lineups and stats
-    #         event_list = adapter.get('events')
-    #         def update_event(event):
-    #             update_event = self.match_events.insert().values(
-    #                     match_id=match_id,
-    #                     team=event.get('team'),
-    #                     minute=event.get('minute'),
-    #                     type=event.get('type'),
-    #                     player_in=event.get('player_in'),
-    #                     player_out=event.get('player_out'),
-    #                     scorer=event.get('scorer'),
-    #                     assist=event.get('assist'),
-    #                     player=event.get('player'),
-    #                 )
-    #             with self.engine.begin() as conn:
-    #                     result = conn.execute(update_event)
-    #                     return result
-    #         for event in event_list:
-    #             existing_event = self.match_events.select().where(
-    #                 (self.match_events.c.match_id == match_id)
-    #             )
-    #             with self.engine.begin() as conn:
-    #                 try:
-    #                     existing_results = conn.execute(existing_event).fetchall()
-    #                 except Exception as e:
-    #                     spider.logger.error(f"Database query failed: {e}")
-    #                     existing_result = None
-    #             if existing_results:
-    #                 for existing_result in existing_results:
-    #                     event_type = existing_result.type
-    #                     if event_type == 'Goal' or  event_type == 'Penalty' or event_type == 'Penalty Missed':
-    #                         if event_type == adapter.get('type') and event.get('minute') == existing_result.minute and event.get('team') == existing_result.team and event.get('scorer') == existing_result.scorer:
-    #                             continue
-    #                         else:
-    #                             update_event(event) 
-    #                     elif event_type == 'Yellow card' or event_type == 'Red card' or event_type == 'Own goal':
-    #                         if event_type == adapter.get('type') and event.get('minute') == existing_result.minute and event.get('team') == existing_result.team and event.get('player') == existing_result.player:
-    #                             continue
-    #                         else:
-    #                             update_event(event) 
-    #                     elif event_type == 'Substitution':
-    #                         if event_type == adapter.get('type') and event.get('minute') == existing_result.minute and event.get('player_in') == existing_result.player_in and event.get('player_out') == existing_result.player_out:
-    #                             continue
-    #                         else:
-    #                             update_event(event) 
-
-    #                 else:
-    #                     update_event(event)
-    #             else:
-    #                 update_event(event)
-    #         match_existing_stats = self.match_stats.select().where(
-    #             (self.match_stats.c.match_id == match_id)
-    #         )
-    #         with self.engine.begin() as conn:
-    #             try:
-    #                 existing_stats = conn.execute(match_existing_stats).fetchone()
-    #             except Exception as e:
-    #                 spider.logger.error(f"Database query failed: {e}")
-    #                 existing_stats = None
-    #         if existing_stats:
-    #             update_match_stats = self.match_stats.update().where(self.match_stats.c.id == existing_stats.id).values(
-    #                 Possession_Away = adapter.get('Possession_Away'),
-    #                 possession_Home = adapter.get('possession_Home'),
-    #                 Total_shots_Away = adapter.get('Total_shots_Away'),
-    #                 Total_shots_Home = adapter.get('Total_shots_Home'),
-    #                 Shots_on_target_Away = adapter.get('Shots_on_target_Away'),
-    #                 Shots_on_target_Home = adapter.get('Shots_on_target_Home'),
-    #                 Duels_won_Away = adapter.get('Duels_won_Away'),
-    #                 Duels_won_Home = adapter.get('Duels_won_Home'),
-    #             )
-    #             with self.engine.begin() as conn:
-    #                 result = conn.execute(update_match_stats)
-    #         existing_match_lineup = self.match_lineups.select().where(
-    #             (self.match_lineups.c.match_id == match_id)
-    #         )
-    #         with self.engine.begin() as conn:
-    #             try:
-    #                 existing_lineups = conn.execute(existing_match_lineup).fetchall()
-    #             except Exception as e:
-    #                 spider.logger.error(f"Database query failed: {e}")
-    #                 existing_lineups = None
-    #         if existing_lineups:
-    #                 current_lineups = adapter.get('match_lineup')
-    #                 #for current_lineup in existing_lineups:
-    #                 for lineup in current_lineups:
-    #                         if lineup not in existing_lineups:
-    #                             lineupp = self.match_lineups.insert().values(
-    #                             match_id=match_id,
-    #                             team=lineup.get('team'),
-    #                             lineup=json.dumps(lineup.get('lineup')) if lineup.get('lineup') != 'no available lineup' else lineup.get('lineup'),
-    #                             formation=lineup.get('home_formation') or lineup.get('away_formation'),
-    #                         )
-    #                             with self.engine.begin() as conn:
-    #                                 result = conn.execute(lineupp)
-
-    #     adapter = ItemAdapter(item)
-    #     url = adapter.get('match_url')
-    #     url_id = url.split('/')[-1]
-    #     existing_match = self.matches.select().where(
-    #         (self.matches.c.match_url == url_id)
-    #     )
-    #     with self.engine.begin() as conn:
-    #         try:
-    #             existing_result = conn.execute(existing_match).fetchone()
-    #         except Exception as e:
-    #             spider.logger.error(f"Database query failed: {e}")
-    #             existing_result = None
-    #     if existing_result:
-    #         if existing_result.league == adapter.get('league') and existing_result.hometeam == adapter.get('hometeam') and existing_result.awayteam == adapter.get('awayteam')\
-    #               and existing_result.kickoff == adapter.get('kickoff') and existing_result.stadium == adapter.get('stadium') and existing_result.match_completion == adapter.get('match_completion'):
-    #             spider.logger.info(f"Match already exists: {adapter.get('hometeam')} vs {adapter.get('awayteam')}")
-    #             return item
-    #         else:
-    #             update_match()
-               
-    #     else:
-                    
-    #             # ins_event = self.match_events.insert().values(
-    #             #     match_id=match_id,
-    #             #     team=event.get('team'),
-    #             #     minute=event.get('minute'),
-    #             #     type=event.get('type'),
-    #             #     player_in=event.get('player_in'),
-    #             #     player_out=event.get('player_out'),
-    #             #     scorer=event.get('scorer'),
-    #             #     assist=event.get('assist'),
-    #             #     player=event.get('player'),
-    #             # )
-    #             # with self.engine.begin() as conn:
-    #             #     result = conn.execute(ins_event)
-
-
-    #         # return item
-             
-        
-    #         ins = self.matches.insert().values(
-    #             league=adapter.get('league'),
-    #             hometeam=adapter.get('hometeam'),
-    #             awayteam=adapter.get('awayteam'),
-    #             hometeam_logo=adapter.get('hometeam_logo'),
-    #             awayteam_logo=adapter.get('awayteam_logo'),
-    #             hometeam_goals=adapter.get('hometeam_goals'),
-    #             awayteam_goals=adapter.get('awayteam_goals'),
-    #             kickoff=adapter.get('kickoff'),
-    #             match_url=url_id,
-    #             match_completion=adapter.get('match_completion'),
-    #             stadium=adapter.get('stadium')
-    #         )
-    #         with self.engine.begin() as conn:
-    #             result = conn.execute(ins)
-    #             match_id = result.inserted_primary_key[0]# will get the inserted match id which is auto incremented on the database side(retuns tuple hence the index [0])
-    #         print('*************************************************************************************')
-    #         spider.logger.info(f"Inserted match: {adapter.get('hometeam')} vs {adapter.get('awayteam')}")
-
-    #         event_list = adapter.get('events')
-    #         for event in event_list:
-    #             ins_event = self.match_events.insert().values(
-    #                 match_id=match_id,
-    #                 team=event.get('team'),
-    #                 minute=event.get('minute'),
-    #                 type=event.get('type'),
-    #                 player_in=event.get('player_in'),
-    #                 player_out=event.get('player_out'),
-    #                 scorer=event.get('scorer'),
-    #                 assist=event.get('assist'),
-    #                 player=event.get('player'),
-    #             )
-    #             with self.engine.begin() as conn:
-    #                 conn.execute(ins_event)
-    #             print('-------------------------------------------------------------------------------------')
-    #             spider.logger.info(f"Inserted event: {event.get('type')} at minute {event.get('minute')}")
-
-    #         ins_stats = self.match_stats.insert().values(
-    #             match_id=match_id,
-    #             possession_home=adapter.get('possession_Home'),
-    #             possession_away=adapter.get('Possession_Away'),            
-    #             total_shots_home=adapter.get('Total_shots_Home'),
-    #             total_shots_away=adapter.get('Total_shots_Away'),
-    #             shots_on_target_home=adapter.get('Shots_on_target_Home'),
-    #             shots_on_target_away=adapter.get('Shots_on_target_Away'),
-    #             duels_won_home=adapter.get('Duels_won_Home'),
-    #             duels_won_away=adapter.get('Duels_won_Away'),
-    #         )
-    #         with self.engine.begin() as conn:
-    #             conn.execute(ins_stats)
-    #         lineups = adapter.get('match_lineup')
-    #         for lineup in lineups:
-    #             ins_lineup = self.match_lineups.insert().values(
-    #                 match_id=match_id,
-    #                 team=lineup.get('team'),
-    #                 lineup=json.dumps(lineup.get('lineup')) if lineup.get('lineup') != 'no available lineup' else lineup.get('lineup'),
-    #                 formation=lineup.get('home_formation') or lineup.get('away_formation'),
-    #             )
-    #             with self.engine.begin() as conn:
-    #                 conn.execute(ins_lineup)
-    #         print('+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++')
-    #         spider.logger.info(f"Inserted stats for match ID: {match_id}"
-    #         )
-    #         return item
-
+   
