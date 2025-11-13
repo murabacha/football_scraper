@@ -8,9 +8,9 @@ from football_scraper.items import FootballScraperItem
 class BallScraperSpider(scrapy.Spider):
     name = "ball_scraper"
     allowed_domains = ["onefootball.com"]
-    # today = datetime.date.today()
+    today = datetime.date.today()
     # yesterday = today - datetime.timedelta(days=1)
-    start_date = '2025-11-12'#yesterday.strftime("%Y-%m-%d")
+    start_date = today.strftime("%Y-%m-%d")
     start_urls = [f"https://onefootball.com/en/matches?date={start_date}"]
     current_date_string = start_date
     # Initialize current_date from the configured start string so decrementing works correctly
@@ -81,7 +81,7 @@ class BallScraperSpider(scrapy.Spider):
                 continue
 
         # Handle date change after scheduling match pages and  Using a low priority for the next-date request so it is processed after match pages.
-        next_date = datetime.date.today() #self.current_date + datetime.timedelta(days=1)
+        next_date = self.current_date - datetime.timedelta(days=1)
         next_date_str = next_date.strftime("%Y-%m-%d")
         self.current_date_string = next_date_str
         self.current_date_string = next_date_str

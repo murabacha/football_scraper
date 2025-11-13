@@ -4,11 +4,12 @@ This document describes the database schema used by the Scrapy project located i
 
 Overview
 --------
-The scrapy pipeline (`pipelines.py`) persists scraped match data into a MySQL database (SQLAlchemy + pymysql). The schema consists of three main tables:
+The scrapy pipeline (`pipelines.py`) persists scraped match data into a MySQL database (SQLAlchemy + pymysql). The schema consists of four main tables:
 
 - `matches` — one row per match (basic match info)
 - `match_events` — one row per event (goal, card, substitution, ...), references `matches`
 - `match_stats` — one row per match summarizing statistics (possession, shots, etc.), references `matches`
+- `match_lineups` — one row per team per match, storing formation and player lists.
 
 These are simple, denormalized tables designed for fast insertion and straightforward queries to retrieve match, event, and stats data.
 
@@ -20,12 +21,18 @@ The pipeline defines tables using SQLAlchemy `Table` objects. The following SQL-
 CREATE TABLE matches (
   id INT PRIMARY KEY AUTO_INCREMENT,
   league VARCHAR(255) NOT NULL,
-  hometeam VARCHAR(255),
-  awayteam VARCHAR(255),
-  hometeam_goals INT,
-  awayteam_goals INT,
-  kickoff VARCHAR(255), -- stored as string in current implementation
-  match_url VARCHAR(500) -- pipeline stores a URL id (last path segment) by default
+  hometeam VARCHAR(255) NULL,
+  awayteam VARCHAR(255) NULL,
+  hometeam_logo VARCHAR(500) NULL,
+  awayteam_logo VARCHAR(500) NULL,
+  hometeam_goals VARCHAR(50) NULL,
+  awayteam_goals VARCHAR(50) NULL,
+  kickoff DATE NULL,
+  match_url VARCHAR(500) NULL,
+  match_completion VARCHAR(500) NULL,
+  stadium VARCHAR(500) NULL,
+  match_time VARCHAR(500) NULL,
+  game_time VARCHAR(500) NULL
 );
 
 -- `match_events`
@@ -49,33 +56,30 @@ CREATE TABLE match_stats (
   match_id INT,
   possession_home VARCHAR(50),
   possession_away VARCHAR(50),
-  total_shots_home INT,
-  total_shots_away INT,
-  shots_on_target_home INT,
-  shots_on_target_away INT,
+  total_shots_home VARCHAR(50),
+  total_shots_away VARCHAR(50),
+  shots_on_target_home VARCHAR(50),
+  shots_on_target_away VARCHAR(50),
   duels_won_home VARCHAR(50),
   duels_won_away VARCHAR(50),
   FOREIGN KEY (match_id) REFERENCES matches(id)
 );
 
 -- `match_lineups`
--- New table: stores lineup information per match/team. The spider collects lineup per team
--- as lists of players with jersey numbers and a formation string. A JSON column is
--- convenient to store the list of players and any nested structure.
 CREATE TABLE match_lineups (
   id INT PRIMARY KEY AUTO_INCREMENT,
   match_id INT,
-  team VARCHAR(100),
-  formation VARCHAR(100), -- e.g. '4-3-3' or 'N/A'
-  lineup JSON, -- JSON array of player objects: [{"player_name": "X", "jersey_number": 9}, ...]
+  team VARCHAR(255),
+  lineup VARCHAR(2000), -- Stored as a JSON string
+  formation VARCHAR(50), -- e.g. '4-3-3' or 'Unknown Formation'
   FOREIGN KEY (match_id) REFERENCES matches(id)
 );
 
 Notes about current implementation
 ----------------------------------
 - `match_url`: the pipeline takes `match_url` from the item and transforms it with `url.split('/')[-1]`. That means only the final path segment (a match id string) is stored. If you want the full URL, store `response.url` directly and avoid splitting.
-- `kickoff` is stored as a string (`VARCHAR`) and the spider currently writes either a page-provided value or a fallback `current_date_string`. That can lead to inconsistent formats (e.g., '2025-11-02', '2 Nov 2025 19:30', or None).
-- Some stat fields (e.g., `possession_home`) are stored as strings like "54% 46%" in the spider. The pipeline maps these fields into the `match_stats` table without normalization.
+- `kickoff` is stored as a `DATE`. The spider extracts this and the pipeline saves it.
+- Stat fields (e.g., `possession_home`, `total_shots_home`) and goal counts are stored as `VARCHAR` strings. The spider extracts them as-is, and the pipeline saves them as strings. This is flexible but requires parsing on the client side for calculations.
 
 Recommended schema improvements
 -------------------------------
@@ -83,7 +87,7 @@ If you plan to query/aggregate by time or want stricter data integrity, consider
 
 1) Normalize `kickoff` to DATETIME (or DATE) and store a consistent format.
    - Change column type to `DATETIME` (or `DATE`) depending on whether you have time data.
-   - Parse the spider's extracted `kickoff` strings into a Python `datetime` before inserting.
+   - The schema already uses `DATE`. If time information becomes available, switching to `DATETIME` would be a good improvement.
 
 Example migration SQL (manual):
 ALTER TABLE matches ADD COLUMN kickoff_dt DATETIME NULL;
@@ -100,7 +104,7 @@ ALTER TABLE matches ADD COLUMN kickoff_dt DATETIME NULL;
      CREATE INDEX idx_match_stats_match_id ON match_stats(match_id);
 
 3) Make numeric stat types consistent
-   - Right now `total_shots_home` etc. are stored as INT. Ensure the spider stores clean integers (strip extra text). If the spider stores composite strings ("12 (4)") or ranges, consider storing raw strings in a separate column and parsed ints in typed columns.
+   - `hometeam_goals`, `total_shots_home`, etc., are stored as `VARCHAR`. For any analytical queries, you would need to cast these to integers in SQL. A better long-term solution is to clean and convert these values to `INT` in the pipeline before insertion.
 
 4) Add NOT NULL and CHECK constraints where appropriate
    - `league` is currently created as NOT NULL in the pipeline. Consider adding NOT NULL or CHECKs for other columns if your data quality allows it.
@@ -113,8 +117,8 @@ CREATE TABLE matches (
   league VARCHAR(255) NOT NULL,
   hometeam VARCHAR(255),
   awayteam VARCHAR(255),
-  hometeam_goals INT,
-  awayteam_goals INT,
+  hometeam_goals INT DEFAULT 0,
+  awayteam_goals INT DEFAULT 0,
   kickoff DATETIME,
   match_url VARCHAR(500),
   UNIQUE KEY ux_matches_match_url (match_url(255))

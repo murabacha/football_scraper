@@ -2,9 +2,8 @@
 #
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: https://docs.scrapy.org/en/latest/topics/item-pipeline.html
-
-
 # useful for handling different item types with a single interface
+from pyclbr import Class
 from itemadapter import ItemAdapter
 
 
@@ -127,7 +126,7 @@ class CleanEventMinutesPipeline:
         return item
 
 
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, ForeignKey, Date, select
+from sqlalchemy import and_, create_engine, MetaData, Table, Column, Integer, String, ForeignKey, Date, select
 import pymysql
 import json
 class SaveMatchesToDatabase:
@@ -316,4 +315,71 @@ class SaveMatchesToDatabase:
                 conn.execute(
                     self.match_stats.update().where(self.match_stats.c.match_id == match_id).values(**stats_data)
                 )
+class SaveLeagueTablePipeline:
+    def __init__(self):
+        self.connect_args = {'ssl':{'mode':'REQUIRED'}}
+        #self.engine = create_engine('mysql+pymysql://avnadmin:AVNS_TTsiC2_1m5LG1Uh7112@robert-football-database2025-robertthuo2004-f295.i.aivencloud.com:26666/football_data',connect_args = self.connect_args, echo=False, future=True)
+        self.engine = create_engine('mysql+pymysql://root:robert@localhost/football')
+        self.metadata = MetaData()
+        self.league_table = Table(
+            'league_table', self.metadata,
+            Column('id', Integer, primary_key=True),
+            Column('group', String(500), nullable=True, default='?'),
+            Column('league', String(255), nullable=False, default='?'),
+            Column('position', String(255), nullable=False, default='?'),
+            Column('team', String(255), nullable=False, default='?'),
+            Column('team_logo', String(255), nullable=True, default='?'),
+            Column('matches_played', Integer, nullable=False, default=0),
+            Column('matches_won', Integer, nullable=False, default=0),
+            Column('matches_drawn', Integer, nullable=False, default=0),
+            Column('matches_lost', Integer, nullable=False, default=0),
+            Column('goals_diff', Integer, nullable=False, default=0),
+            Column('points', Integer, nullable=False, default=0),
+            Column('position_change', Integer, nullable=False, default=0),
+        )
+        self.metadata.create_all(self.engine)
+        self.connection = self.engine.connect()
+    def save_and_update_table(self, item, spider):
+        adapter = ItemAdapter(item)
+        table_rows = adapter.get("table", [])
+        league = adapter.get("league")
+
+        if not table_rows:
+            return
+
+        current_teams = [r.get('team') for r in table_rows]
+
+        with self.engine.begin() as conn:
+            existing = conn.execute(
+                select(self.league_table).where(self.league_table.c.league == league)
+            ).fetchall()
+
+            conn.execute(
+                self.league_table.delete().where(
+                    and_(
+                        self.league_table.c.league == league,
+                        self.league_table.c.team.notin_(current_teams)
+                    )
+                )
+            )
+
+            existing_dict = {r.team: dict(r._mapping) for r in existing}
+
+            for ev in table_rows:
+                team = ev.get("team")
+                existing_row = existing_dict.get(team)
+
+                if not existing_row:
+                    conn.execute(self.league_table.insert().values(**ev))
+                    spider.logger.info(f"Inserted new team: {team} ({ev.get('position')}) in {league}")
+                elif any(str(existing_row[k]) != str(ev[k]) for k in ev if k in existing_row):
+                    conn.execute(
+                        self.league_table.update()
+                        .where(self.league_table.c.team == team)
+                        .values(**ev)
+                    )
+                    spider.logger.info(f"Updated team: {team} ({ev.get('position')}) in {league}")
+
+    
    
+        

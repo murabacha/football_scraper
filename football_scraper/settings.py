@@ -22,8 +22,8 @@ ADDONS = {}
 ROBOTSTXT_OBEY = True
 
 # Concurrency and throttling settings
-CONCURRENT_REQUESTS = 20
-CONCURRENT_REQUESTS_PER_DOMAIN = 20
+CONCURRENT_REQUESTS =1
+CONCURRENT_REQUESTS_PER_DOMAIN = 1
 DOWNLOAD_DELAY = 0
 RETRIES = 3
 # Disable cookies (enabled by default)
@@ -58,20 +58,20 @@ RETRIES = 3
 
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
-ITEM_PIPELINES = {
-   "football_scraper.pipelines.FootballScraperPipeline": 300,
-    "football_scraper.pipelines.CleanEventMinutesPipeline": 400,
-    "football_scraper.pipelines.SaveMatchesToDatabase": 800,
-}
-# FEEDS = {
-#     "results.json": {
-#         "format": "json",
-#         "encoding": "utf8",
-#         "store_empty": False,
-#         "fields": None,
-#         "indent": 4,
-#     }
+# ITEM_PIPELINES = {
+#    "football_scraper.pipelines.FootballScraperPipeline": 300,
+#     "football_scraper.pipelines.CleanEventMinutesPipeline": 400,
+#     "football_scraper.pipelines.SaveMatchesToDatabase": 800,
 # }
+FEEDS = {
+    "table_data.json": {
+        "format": "json",
+        "encoding": "utf8",
+        "store_empty": False,
+        "fields": None,
+        "indent": 4,
+    }
+}
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html

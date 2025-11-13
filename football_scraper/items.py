@@ -30,3 +30,6 @@ class FootballScraperItem(scrapy.Item):
     match_completion = scrapy.Field()
     match_time = scrapy.Field()
     game_time = scrapy.Field()
+class TableItem(scrapy.Item):
+    table = scrapy.Field()
+    league = scrapy.Field()

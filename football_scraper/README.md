@@ -9,7 +9,7 @@ This README documents the main parts of the small Scrapy project so you can shar
 The doc covers: what each file does, the data flow, the DB schema used, how to run the spider, common bugs and fixes, and suggestions for improvements.
 
 ## 1 — High level overview
-
+ 
 The project is a Scrapy-based web scraper that visits OneFootball match pages and extracts:
 - teams and scores
 - match events (goals, substitutions, cards, etc.)
@@ -17,12 +17,12 @@ The project is a Scrapy-based web scraper that visits OneFootball match pages an
 - kickoff and stadium info
 
 Each match is represented by a `FootballScraperItem` (see `items.py`). Items are yielded by the spider and passed through pipelines which (1) normalize/clean data and (2) save it into a MySQL database using SQLAlchemy.
-
+ 
 ## 2 — Files and responsibilities
-
+ 
 ### `items.py`
 Defines the item shape used by the spider:
-- Fields: `league`, `hometeam`, `awayteam`, `hometeam_goals`, `awayteam_goals`, `events`, `possession_Home`, `Possession_Away`, `Total_shots_Home`, `Total_shots_Away`, `Shots_on_target_Home`, `Shots_on_target_Away`, `Duels_won_Home`, `Duels_won_Away`, `kickoff`, `stadium`, `match_url`.
+- Fields: `league`, `hometeam`, `hometeam_logo`, `awayteam`, `awayteam_logo`, `hometeam_goals`, `awayteam_goals`, `events`, `possession_Home`, `Possession_Away`, `Total_shots_Home`, `Total_shots_Away`, `Shots_on_target_Home`, `Shots_on_target_Away`, `Duels_won_Home`, `Duels_won_Away`, `kickoff`, `stadium`, `match_url`, `match_lineup`, `match_completion`, `match_time`, `game_time`.
 
 Purpose: gives a structured container that the spider fills and the pipelines consume.
 
@@ -36,34 +36,38 @@ Primary scraper. Key behavior:
   - Builds an `events` list from home and away event nodes; event entries include: `team`, `minute`, `type`, `player_in`, `player_out`, `scorer`, `assist`, `player`.
   - Extracts match statistics (possession, shots, shots on target, duels won) from stat nodes and stores into fields like `possession_Home`, `Total_shots_Home`, etc.
   - Extracts extra info like kickoff date/time and stadium from a `MatchInfoEntry_subtitle` selector. If page fields are missing, the spider may fall back to `self.current_date`.
+  - Extracts team lineups, including players, jersey numbers, and formation, into the `match_lineup` field.
   - Yields the filled `FootballScraperItem`.
 
-Important implementation notes / pitfalls seen in the codebase:
-- Make a new `FootballScraperItem()` inside `parse_stats` for each match (not a class-level shared instance). If shared, different matches will overwrite the same item leading to wrong data in DB.
-- Ensure the code that extracts statistics and kickoff runs once per match (not inside an events loop). If it's inside the away-events loop and a match has zero away events, kickoff/stats may never be set.
+
 
 ### `pipelines.py`
 There are three pipeline classes of interest:
 
 1. `FootballScraperPipeline`:
-   - Ensures `events` is present and non-empty; if empty, inserts a placeholder single event with all fields `None`.
+   - Cleans and provides default values for several fields.
+   - If `events` is empty, it inserts a placeholder event.
+   - If `stadium` is missing, it sets a default.
+   - If `match_lineup` is empty, it creates placeholder entries for home and away teams.
+   - Normalizes `hometeam_goals` and `awayteam_goals` to integers, defaulting to 0.
 
 2. `CleanEventMinutesPipeline`:
    - Iterates events and normalizes the `minute` field.
-   - Removes apostrophes, strips whitespace, pads single-digit minutes with a leading zero, converts numeric minute strings to `int`, else sets `minute` to `None`.
+   - It cleans string values (like "45+1'") into integers.
 
 3. `SaveMatchesToDatabase`:
-   - Uses SQLAlchemy + `pymysql` to connect to a MySQL database at `mysql+pymysql://root:robert@localhost/football` (change credentials/host as needed).
-   - Defines three tables using SQLAlchemy `Table` objects:
-     - `matches` (id, league, hometeam, awayteam, hometeam_goals, awayteam_goals, kickoff, match_url)
+   - Connects to a MySQL database (credentials are in the `create_engine` call).
+   - Defines four tables using SQLAlchemy `Table` objects:
+     - `matches` (with all match-level details)
      - `match_events` (id, match_id -> matches.id, team, minute, type, player_in, player_out, scorer, assist, player)
      - `match_stats` (id, match_id -> matches.id, possession_home, possession_away, total_shots_home/away, shots_on_target_home/away, duels_won_home/away)
+     - `match_lineups` (id, match_id -> matches.id, team, formation, lineup)
    - Insert flow per item:
-     1. Compute `url_id` by splitting `match_url` at the last `/` and taking the last part. Query to see if `matches.match_url == url_id` exists; skip if already exists.
-     2. Insert into `matches` table and get `match_id` from `result.inserted_primary_key[0]`.
-     3. Insert one row per event into `match_events` with `match_id` foreign key.
-     4. Insert aggregated stats into `match_stats` with `match_id`.
-   - Note: `kickoff` is stored as a plain string in `matches.kickoff`. Consider using a proper datetime/datetimestamp type if standardization is required.
+     1. Checks if a match exists based on `match_url`.
+     2. If the match is new, it inserts a new record into `matches`.
+     3. If the match exists, it compares the scraped data with the stored data and updates the `matches` record if anything has changed.
+     4. It synchronizes `match_events` and `match_lineups`, only inserting new events or lineups that are not already in the database for that match.
+     5. It inserts or updates the record in `match_stats`.
 
 ## 3 — Data flow (short)
 1. Spider requests match page -> `parse_stats` builds `FootballScraperItem`.
@@ -81,6 +85,5 @@ scrapy crawl ball_scraper
 
 Database setup:
 - Ensure MySQL is running and a database named `football` exists.
-- Update DB credentials in `pipelines.py` (the SQLAlchemy URL) if different from `root:robert@localhost`.
+- Update DB credentials in `pipelines.py` (the SQLAlchemy `create_engine` URL).
 - The pipeline will create tables automatically (via `metadata.create_all(self.engine)`).
-
