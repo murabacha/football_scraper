@@ -1,16 +1,17 @@
 import scrapy
-from football_scraper.items import TableItem
+from football_scraper.items import NewsItem
 import json
+import datetime 
 
 class LeagueSpiderSpider(scrapy.Spider):
     name = "league_news_spider"
-    # custom_settings = {
-    #     'ITEM_PIPELINES': {
-    #         'football_scraper.pipelines.SaveLeagueTablePipeline': 300,
+    custom_settings = {
+        'ITEM_PIPELINES': {
+            'football_scraper.pipelines.SaveLeagueNewsPipeline': 300,
             
-    #     }
+        }
         
-    # }
+    }
     allowed_domains = ["onefootball.com"]
     start_urls = ["https://onefootball.com/"]
     leages_urls = ['/en/competition/conmebol-libertadores-femenina-2775', '/en/competition/pro-league-58', '/en/competition/1-divisjon-2985', '/en/competition/a-league-women-2806', '/en/competition/usl-league-one-2915',
@@ -71,7 +72,6 @@ class LeagueSpiderSpider(scrapy.Spider):
             url_end = url.split('/')[-1]
             news_api_url = f'https://api.onefootball.com/web-experience/en/competition/{url_end}'
             
-            # Start with a count of 0 items seen
             yield scrapy.Request(
                 url=news_api_url, 
                 callback=self.parse_news,
@@ -84,61 +84,57 @@ class LeagueSpiderSpider(scrapy.Spider):
     def parse_news(self, response, base_api_url, current_total_count,league_name=None):
         json_data = json.loads(response.text)
         
-        # We need to collect all teasers found on THIS page to count them
         found_teasers = []
         
-        # --- PATH 1: PAGINATED PAGE (API response is just a list of teasers) ---
         if "before_id=" in response.url:
             if json_data:
-                # get() defaults to empty list, avoiding errors
                 found_teasers = json_data.get('teasers', [])
                 league_name = league_name
 
-        # --- PATH 2: FIRST PAGE (API response is nested containers) ---
         else:
             if json_data:
                 containers = json_data.get('containers', [])
                 
                 for container in containers:
                     try:
-                        # Extract the list safely
-                        league_name = container['fullWidth']['component']['entityTitle']['title']
+                        
                         teasers = container['fullWidth']['component']['gallery']['teasers']
                         if teasers:
                             found_teasers.extend(teasers)
                     except KeyError:
                         continue
+                for container in containers:
+                    try:
+                        league_name = container['fullWidth']['component']['entityTitle']['title']
+                    except KeyError:
+                        continue
+        
 
         if not found_teasers:
+            self.logger.warning(f"No teasers found for {response.url}")
             return
 
-        # --- PROCESS ITEMS ---
+        # PROCESS ITEMS
         last_seen_id = None
         
         for news in found_teasers:
             link = news.get('link')
             last_seen_id = news.get('id')
-            
+            link = f'https://onefootball.com{link}'
             
             yield scrapy.Request(
                 url=link,
                 callback=self.parse_article,
                 cb_kwargs={'league':league_name}
             )
-
-        # --- CALCULATE NEXT POSITION ---
-        # If we had 10 items before, and found 14 now, new position is 24.
         items_on_this_page = len(found_teasers)
         new_total_count = current_total_count + items_on_this_page
-
-        # --- RECURSION ---
         if last_seen_id:
             next_link = f"{base_api_url}?before_id={last_seen_id}&before_position={new_total_count}"
             
             yield scrapy.Request(
                 url=next_link, 
                 callback=self.parse_news,
-                # Pass the NEW total and the SAME base URL
                 cb_kwargs={
                     'base_api_url': base_api_url,
                     'current_total_count': new_total_count,
@@ -146,20 +142,32 @@ class LeagueSpiderSpider(scrapy.Spider):
                 }
             )
     def parse_article(self, response, league):
-        date_published = response.css('p.title-8-regular.ArticleHeroBanner_providerDetails__D_5AV span::text').getall()[-1]
-        heading = response.css('span.ArticleHeroBanner_articleTitleTextBackground__yGcZl::text').get()
-        parts = response.css('div.ArticleParagraph_articleParagraph__MrxYL')
+        news_item = NewsItem()
+        
+        date_published = response.css('p[class*="ArticleHeroBanner_providerDetails"] span::text').getall()[-1]
+        date_published = datetime.datetime.strptime(date_published, '%d %B %Y')
+        heading = response.css('span[class*="ArticleHeroBanner_articleTitleTextBackground"]::text').get()
+        images = response.css('picture.ImageWithSets_of-image__picture__4hzsN img::attr(src)').getall()[:2]
+        
+        parts = response.css('div[class*="ArticleParagraph_articleParagraph"]')
         
         if not parts:
             self.logger.warning(f"No article parts found for {response.url}")
             return
-        else:
-            self.logger.info(f"Found {len(parts)} parts for article {response.url}")
             
+        self.logger.info(f"Found {len(parts)} parts for article {response.url}")
+        
+        article_content = {}
+        
         for index, part in enumerate(parts, start=1):
-            content = part.css('p::text').get() or part.css('h3::text').get()
-            paragraph = {index: content}
-            yield {'league': league, 
-                   'date_published': date_published, 
-                   'heading': heading, 
-                   'paragraph': paragraph}
+            content = part.xpath('string(.)').get().strip()
+            if content:
+                article_content[index] = content
+
+        news_item['date_published'] = date_published
+        news_item['heading'] = heading
+        news_item['image1'] = images[0]
+        news_item['image2'] = images[1] if len(images) > 1 else None
+        news_item['content'] = article_content
+        news_item['league'] = league
+        yield news_item

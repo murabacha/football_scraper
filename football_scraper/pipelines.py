@@ -3,6 +3,7 @@
 # Don't forget to add your pipeline to the ITEM_PIPELINES setting
 # See: https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 # useful for handling different item types with a single interface
+import datetime
 from pyclbr import Class
 from itemadapter import ItemAdapter
 
@@ -126,7 +127,7 @@ class CleanEventMinutesPipeline:
         return item
 
 
-from sqlalchemy import and_, create_engine, MetaData, Table, Column, Integer, String, ForeignKey, Date, select
+from sqlalchemy import and_, create_engine, MetaData, Table, Column, Integer, String, ForeignKey, Date, select,Text
 import pymysql
 import json
 class SaveMatchesToDatabase:
@@ -447,3 +448,44 @@ class SaveLeagueTransfersPipeline:
                         .values(**ev)
                     )
                     spider.logger.info(f"Updated transfer: {player_name} in {league}")
+                    
+class SaveLeagueNewsPipeline:
+    import json
+    def __init__(self):
+        self.connect_args = {'ssl':{'mode':'REQUIRED'}}
+        self.engine = create_engine('mysql+pymysql://root:robert@localhost/football')
+        self.metadata = MetaData()
+        self.league_news = Table(
+            'league_news', self.metadata,
+            Column('id', Integer, primary_key=True),
+            Column('league', String(255), nullable=False, default='?'),
+            Column('date_published', Date, nullable=False, default='?'),
+            Column('heading', String(255), nullable=False, default='?'),
+            Column('content', Text, nullable=False, default='?'),
+            Column('image1', String(500), nullable=False, default='?'),
+            Column('image2', String(500), nullable=False, default='?'),
+
+        )
+        self.metadata.create_all(self.engine)
+        self.connection = self.engine.connect()
+        
+    def process_item(self, item, spider):
+        self.save_and_update_news(item, spider)
+        return item
+    def save_and_update_news(self, item, spider):
+        adapter = ItemAdapter(item)
+        league = adapter.get("league")
+        date_published = adapter.get("date_published")
+        heading  = adapter.get("heading")
+        image1 = adapter.get("image1")
+        image2 = adapter.get("image2")
+        content = json.dumps(adapter.get("content"))
+
+
+        with self.engine.begin() as conn:
+            existing = conn.execute(
+                select(self.league_news).where(self.league_news.c.heading == heading)
+            ).fetchall()
+            if not existing:
+                conn.execute(self.league_news.insert().values(league=league, date_published=date_published, heading=heading, content=content, image1=image1, image2=image2))
+                spider.logger.info(f"Inserted new news: {heading} in {league}")

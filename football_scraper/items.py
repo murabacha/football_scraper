@@ -37,3 +37,11 @@ class TableItem(scrapy.Item):
 class TransferItem(scrapy.Item):
     league = scrapy.Field()
     transfers = scrapy.Field()
+    
+class NewsItem(scrapy.Item):
+    league = scrapy.Field()
+    date_published = scrapy.Field()
+    heading = scrapy.Field()
+    image1 = scrapy.Field()
+    image2 = scrapy.Field()
+    content = scrapy.Field()
