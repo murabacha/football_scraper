@@ -45,3 +45,8 @@ class NewsItem(scrapy.Item):
     image1 = scrapy.Field()
     image2 = scrapy.Field()
     content = scrapy.Field()
+    
+class TeamItem(scrapy.Item):
+    team_name = scrapy.Field()
+    team_logo = scrapy.Field()
+    squad = scrapy.Field()

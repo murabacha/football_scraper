@@ -489,3 +489,36 @@ class SaveLeagueNewsPipeline:
             if not existing:
                 conn.execute(self.league_news.insert().values(league=league, date_published=date_published, heading=heading, content=content, image1=image1, image2=image2))
                 spider.logger.info(f"Inserted new news: {heading} in {league}")
+                
+class SaveTeamPipeline:
+    import json
+    def __init__(self):
+        self.connect_args = {'ssl':{'mode':'REQUIRED'}}
+        self.engine = create_engine('mysql+pymysql://root:robert@localhost/football')
+        self.metadata = MetaData()
+        self.team_table = Table(
+            'team', self.metadata,
+            Column('id', Integer, primary_key=True),
+            Column('team_name', String(255), nullable=False, default='?'),
+            Column('team_logo', String(255), nullable=False, default='?'),
+            Column('squad', Text, nullable=True),
+        )
+        self.metadata.create_all(self.engine)
+        self.connection = self.engine.connect()
+        
+    def process_item(self, item, spider):
+        self.save_and_update_team(item, spider)
+        return item
+    def save_and_update_team(self, item, spider):
+        adapter = ItemAdapter(item)
+        team_name = adapter.get("team_name")
+        team_logo = adapter.get("team_logo")
+        squad = json.dumps(adapter.get("squad")) 
+
+        with self.engine.begin() as conn:
+            existing = conn.execute(
+                select(self.team_table).where(self.team_table.c.team_name == team_name)
+            ).fetchall()
+            if not existing:
+                conn.execute(self.team_table.insert().values(team_name=team_name, team_logo=team_logo, squad=squad))
+                spider.logger.info(f"Inserted new team: {team_name}")
