@@ -33,3 +33,7 @@ class FootballScraperItem(scrapy.Item):
 class TableItem(scrapy.Item):
     table = scrapy.Field()
     league = scrapy.Field()
+    
+class TransferItem(scrapy.Item):
+    league = scrapy.Field()
+    transfers = scrapy.Field()

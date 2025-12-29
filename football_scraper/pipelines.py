@@ -318,8 +318,8 @@ class SaveMatchesToDatabase:
 class SaveLeagueTablePipeline:
     def __init__(self):
         self.connect_args = {'ssl':{'mode':'REQUIRED'}}
-        #self.engine = create_engine('mysql+pymysql://avnadmin:AVNS_TTsiC2_1m5LG1Uh7112@robert-football-database2025-robertthuo2004-f295.i.aivencloud.com:26666/football_data',connect_args = self.connect_args, echo=False, future=True)
-        self.engine = create_engine('mysql+pymysql://root:robert@localhost/football')
+        self.engine = create_engine('mysql+pymysql://avnadmin:AVNS_TTsiC2_1m5LG1Uh7112@robert-football-database2025-robertthuo2004-f295.i.aivencloud.com:26666/football_data',connect_args = self.connect_args, echo=False, future=True)
+        #self.engine = create_engine('mysql+pymysql://root:robert@localhost/football')
         self.metadata = MetaData()
         self.league_table = Table(
             'league_table', self.metadata,
@@ -382,4 +382,68 @@ class SaveLeagueTablePipeline:
 
     
    
+class SaveLeagueTransfersPipeline:
+    def __init__(self):
+        self.connect_args = {'ssl':{'mode':'REQUIRED'}}
+        #self.engine = create_engine('mysql+pymysql://avnadmin:AVNS_TTsiC2_1m5LG1Uh7112@robert-football-database2025-robertthuo2004-f295.i.aivencloud.com:26666/football_data',connect_args = self.connect_args, echo=False, future=True)
+        self.engine = create_engine('mysql+pymysql://root:robert@localhost/football')
+        self.metadata = MetaData()
+        self.league_transfers = Table(
+            'league_transfers', self.metadata,
+            Column('id', Integer, primary_key=True),
+            Column('league', String(255), nullable=False, default='?'),
+            Column('transfer_type', String(100), nullable=False, default='?'),
+            Column('date', String(100), nullable=False, default='?'),
+            Column('player_img', String(500), nullable=True, default='?'),
+            Column('player_name', String(255), nullable=False, default='?'),
+            Column('position', String(100), nullable=True, default='?'),
+            Column('team_logo', String(500), nullable=True, default='?'),
+            Column('old_team', String(255), nullable=True, default='?'),
+            Column('new_team', String(255), nullable=True, default='?'),
+            Column('fee', String(100), nullable=True, default=''),
+            Column('until', String(100), nullable=True, default='?'),
+        )
+        self.metadata.create_all(self.engine)
+        self.connection = self.engine.connect()
         
+    def process_item(self, item, spider):
+        self.save_and_update_transfers(item, spider)
+        return item
+    def save_and_update_transfers(self, item, spider):
+        adapter = ItemAdapter(item)
+        transfers = adapter.get("transfers", [])
+        league = adapter.get("league")
+
+        if not transfers:
+            return
+
+        with self.engine.begin() as conn:
+            existing = conn.execute(
+                select(self.league_transfers).where(self.league_transfers.c.league == league)
+            ).fetchall()
+
+            conn.execute(
+                self.league_transfers.delete().where(
+                    and_(
+                        self.league_transfers.c.league == league,
+                        self.league_transfers.c.player_name.notin_([r.get('player_name') for r in transfers])
+                    )
+                )
+            )
+
+            existing_dict = {r.player_name: dict(r._mapping) for r in existing}
+
+            for ev in transfers:
+                player_name = ev.get("player_name")
+                existing_row = existing_dict.get(player_name)
+
+                if not existing_row:
+                    conn.execute(self.league_transfers.insert().values(**ev))
+                    spider.logger.info(f"Inserted new transfer: {player_name} in {league}")
+                elif any(str(existing_row[k]) != str(ev[k]) for k in ev if k in existing_row):
+                    conn.execute(
+                        self.league_transfers.update()
+                        .where(self.league_transfers.c.player_name == player_name)
+                        .values(**ev)
+                    )
+                    spider.logger.info(f"Updated transfer: {player_name} in {league}")

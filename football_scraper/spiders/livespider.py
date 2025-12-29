@@ -1,104 +1,39 @@
 import scrapy
+import json
+import pymysql
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, select, delete
 import datetime
-import json
-import json
 from football_scraper.items import FootballScraperItem
 
 
-class BallScraperSpider(scrapy.Spider):
-    name = "ball_scraper"
+class TestspiderSpider(scrapy.Spider):
+    name = "livespider"
     allowed_domains = ["onefootball.com"]
-    today = datetime.datetime.strptime('2025-12-14',"%Y-%m-%d").date()
-    # yesterday = today - datetime.timedelta(days=1)
-    start_date = today.strftime("%Y-%m-%d")
-    start_urls = [f"https://onefootball.com/en/matches?date={start_date}"]
-    current_date_string = start_date
-    # Initialize current_date from the configured start string so decrementing works correctly
-    current_date = datetime.datetime.strptime(start_date, "%Y-%m-%d").date()
-    def parse(self, response):
-        current_url = response.url
-        current_now_date = current_url.split('=')[-1]
-        self.input_date = datetime.datetime.strptime(current_now_date, "%Y-%m-%d").date()
-
-
-        json_data = response.css('script#__NEXT_DATA__::text').get()
-        data = json.loads(json_data)
-        containers = data['props']['pageProps']['containers']
-        links = []
+    start_urls = ["http://onefootball.com/"]
+    def __init__(self):
+        self.engine = create_engine('mysql+pymysql://robert:robert@localhost/football')
+        self.metadata = MetaData()
+        self.live_matches = Table('live_matches', self.metadata,
+            Column('id', Integer, primary_key=True),    
+            Column('match_id', String(100), unique=True, nullable=False))
+        self.metadata.create_all(self.engine)
+        self.connection = self.engine.connect()
         
-        for container in containers:
-            
-            try:
-                match_cards  = container['type']['fullWidth']['component']['contentType']['matchCardsList']['matchCards']
-                for match in match_cards:
-                    link = match.get('link')
-                    links.append(link)
-               
-            except Exception as e:
-                self.logger.warning(f"Could not find link in container: {e}")
-                continue
-        print('******************************************************************************************************************************')
-        print(len(links))
-        print(links)
-        print('******************************************************************************************************************************')
-        # Schedule per-match requests with higher priority so they are
-        # processed before the next-date listing request. This reduces the
-        # chance Scrapy will fetch the next date while some match pages
-        # are still pending.
-        for link in links:
-            match_url = link
-        json_data = response.css('script#__NEXT_DATA__::text').get()
-        data = json.loads(json_data)
-        containers = data['props']['pageProps']['containers']
-        links = []
         
-        for container in containers:
+    def start_requests(self):
+        st = select(self.live_matches)
+        result = self.connection.execute(st)
+        for row in result:
+            match_id = row[1]
+            print('-----------------------------------')
+            print(match_id)
+            print('-----------------------------------')
+            url = f"https://onefootball.com/en/match/{match_id}"
+            yield scrapy.Request(url=url, callback=self.parse_stats, priority=10,dont_filter=True)
             
-            try:
-                match_cards  = container['type']['fullWidth']['component']['contentType']['matchCardsList']['matchCards']
-                for match in match_cards:
-                    link = match.get('link')
-                    links.append(link)
-               
-            except Exception as e:
-                self.logger.warning(f"Could not find link in container: {e}")
-                continue
-        print('******************************************************************************************************************************')
-        print(len(links))
-        print(links)
-        print('******************************************************************************************************************************')
-        # Schedule per-match requests with higher priority so they are
-        # processed before the next-date listing request. This reduces the
-        # chance Scrapy will fetch the next date while some match pages
-        # are still pending.
-        for link in links:
-            match_url = link
-            if match_url:
-                url = f"https://onefootball.com{match_url}"
-                yield response.follow(url, callback=self.parse_stats, priority=10,dont_filter=True)
-            else:
-                # skip missing links
-                continue
-
-        # Handle date change after scheduling match pages and  Using a low priority for the next-date request so it is processed after match pages.
-        # if self.current_date == datetime.date.today() - datetime.timedelta(days=4):
-        #     next_date = datetime.date.today()
-        # else:
-        next_date = self.current_date - datetime.timedelta(days=1)
-        next_date_str = next_date.strftime("%Y-%m-%d")
-        self.current_date_string = next_date_str
-        self.current_date_string = next_date_str
-        next_url = f"https://onefootball.com/en/matches?date={next_date_str}"
-        self.current_date = next_date
-        yield scrapy.Request(next_url, callback=self.parse, priority=-10)
-
     def parse_stats(self, response):
-        # Create a new item instance for each match
-        referrer = response.request.headers.get('Referer')
-        if referrer:
-            referrer = referrer.decode('utf-8')
-        the_date = referrer.split('=')[-1]
-        the_date_date = datetime.datetime.strptime(the_date, "%Y-%m-%d").date()
+        
+        the_date_date = datetime.datetime.now().date()
         ball_item = FootballScraperItem()
         match_completion =  response.css('div.MatchScore_data__ahxqz span.title-8-medium::text').get() or response.css('div.MatchScore_data__ahxqz span.title-8-medium.MatchScore_highlightedText__hXFt7').get()
         if match_completion is None:
@@ -125,7 +60,7 @@ class BallScraperSpider(scrapy.Spider):
             ball_item['awayteam_goals'] = '0'
             ball_item['kickoff'] = the_date_date  #-datetime.timedelta(days=1)
             ball_item['events'] = []
-            ball_item['stadium'] = response.css('li div.MatchInfo_entry__94sgy span.title-8-regular.MatchInfoEntry_subtitle__Mb7Jd::text').getall()[-1]
+            ball_item['stadium'] = response.css('li div.MatchInfo_entry__94sgy span.title-8-regular.MatchInfoEntry_subtitle__Mb7Jd::text').getall()[-1] if len(response.css('li div.MatchInfo_entry__94sgy span.title-8-regular.MatchInfoEntry_subtitle__Mb7Jd::text').getall())>2 else None
             ball_item['match_lineup'] = []
             ball_item['possession_Home'] = None
             ball_item['Possession_Away'] = None
@@ -414,3 +349,5 @@ class BallScraperSpider(scrapy.Spider):
         yield ball_item
 
 
+
+        
